@@ -2,11 +2,19 @@
 
 Made for 4,3' touch lcd from wondershare, ui is built for 800x480 so scaling may be a problem.
 
-You'll need to set spotipy variables into a credentials.py file into the root of the project like, this is not secure, is just for development.
+for now is just the player, controlling a single device, hardcoded, which is the string "SAMWIN", have fun with that leak.
+
+updates the ui every 1s, if it's playing , otherwise u need to do smth! (like a click)
+
+You'll need to set spotipy variables into a credentials.py file into the src folder of the project.
+
+this is not very secure, you should use env variables.
 
 ```
 SPOTIPY_THING = "123123123"
 ```
+
+## SCREENSHOT
 
 ## Run the app
 
