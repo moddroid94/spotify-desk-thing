@@ -1,10 +1,13 @@
 import time
 import flet as ft
 import spotipy
+from functools import partial
 
 from spotipy.oauth2 import SpotifyOAuth
 from apscheduler.schedulers.background import BackgroundScheduler
 import credentials
+from Pylette import extract_colors
+
 
 scope = "user-library-read, user-read-playback-state, user-modify-playback-state, user-read-currently-playing, user-read-playback-position, user-read-recently-played"
 
@@ -28,6 +31,7 @@ class SpotifyController:
 
         self.playback_state = sp.current_playback()
         self.currently_playing = sp.currently_playing()
+        self.queue = None
 
         if self.playback_state is not None:
             self.trackimage = self.playback_state["item"]["album"]["images"][1]["url"]
@@ -62,6 +66,7 @@ class SpotifyController:
 
     def update_playback(self):
         self.playback_state = sp.current_playback()
+        # print(self.playback_state)
         if self.playback_state is not None:
             self.trackimage = self.playback_state["item"]["album"]["images"][1]["url"]
             self.trackartist = ""
@@ -71,6 +76,10 @@ class SpotifyController:
             self.trackname = self.playback_state["item"]["name"]
             self.trackalbum = self.playback_state["item"]["album"]["name"]
             self.is_playing = self.playback_state["is_playing"]
+            try:
+                self.context = self.playback_state["context"]["uri"]
+            except:
+                self.context = None
         else:
             self.playback_state = sp.current_user_recently_played(limit=1)
             self.trackimage = self.playback_state["items"][0]["track"]["album"][
@@ -121,6 +130,27 @@ class SpotifyController:
     def update_volume(self, volume):
         sp.volume(volume, self.deviceid)
 
+    def get_queue(self):
+        try:
+            sp.shuffle(False, self.deviceid)
+        except Exception as e:
+            print(e)
+        time.sleep(0.5)
+        que = sp.queue()
+        time.sleep(0.2)
+        self.queue = que["queue"]
+
+    def play_trackcontexturi(self, contexturi, trackuri):
+        offset = {"uri": trackuri}
+        sp.start_playback(self.deviceid, context_uri=contexturi, offset=offset)
+        self.update_playback()
+        time.sleep(0.3)
+
+    def play_trackuri(self, trackuri):
+        sp.start_playback(self.deviceid, uris=trackuri)
+        self.update_playback()
+        time.sleep(0.3)
+
 
 spc = SpotifyController()
 
@@ -129,6 +159,32 @@ def main(page: ft.Page):
     scheduler = BackgroundScheduler()
     scheduler.start()
     job = None
+
+    def long_running_poll():
+        try:
+            scheduler.add_job(
+                func=long_poll_check,
+                trigger="interval",
+                seconds=5,
+                id="longpoll",
+                max_instances=1,
+            )
+        except Exception as e:
+            scheduler.resume_job(job_id="longpoll", jobstore="default")
+
+    def remove_long_poll():
+        try:
+            scheduler.remove_job(job_id="longpoll", jobstore="default")
+        except Exception as e:
+            pass
+
+    def long_poll_check():
+        spc.update_playback()
+        update_fields()
+        page.update()
+        if spc.is_playing == True:
+            start_refresh()
+            remove_long_poll()
 
     def start_refresh():
         try:
@@ -145,32 +201,110 @@ def main(page: ft.Page):
 
     def stop_timer():
         try:
-            scheduler.pause_job(job_id="timer", jobstore="default")
+            scheduler.remove_job(job_id="timer", jobstore="default")
         except Exception as e:
             pass
+
+    def extract_pallete():
+        palette = extract_colors(
+            image=spc.trackimage, palette_size=5, sort_mode="frequency", mode="KM"
+        )
+        most_common_color = palette[0].rgb
+        rgbval = (
+            most_common_color[0],
+            most_common_color[1],
+            most_common_color[2],
+        )
+        least_common_color = palette[1].rgb
+        collum = palette[1].luminance
+        if collum > 100:
+            nexttrack.icon_color = "#000000"
+            prevtrack.icon_color = "#000000"
+        else:
+            nexttrack.icon_color = "#ffffff"
+            prevtrack.icon_color = "#ffffff"
+        rgbval2 = (
+            least_common_color[0],
+            least_common_color[1],
+            least_common_color[2],
+        )
+        rgbcol = "#60%02x%02x%02x" % (rgbval)
+        rgbcol2 = "#%02x%02x%02x" % (rgbval2)
+        page.views[-1].bgcolor = rgbcol
+        nexttrack.style.bgcolor = rgbcol2
+        prevtrack.style.bgcolor = rgbcol2
+
+    def make_queue():
+        spc.get_queue()
+        if spc.queue is not None:
+            queuelist = []
+            for i in spc.queue:
+                artists = ""
+                for x in i["artists"]:
+                    artists = artists + x["name"] + ", "
+                artists = artists[0:-2]
+                queuelist.append(
+                    ft.ListTile(
+                        leading=ft.Image(
+                            src=i["album"]["images"][2]["url"],
+                            width=32,
+                            height=32,
+                            fit=ft.ImageFit.CONTAIN,
+                            border_radius=ft.border_radius.all(5),
+                        ),
+                        title=ft.Text(i["name"]),
+                        subtitle=ft.Text(artists),
+                        trailing=ft.IconButton(ft.Icons.PLAY_ARROW),
+                        on_click=change_track,
+                        data=[spc.context, i["uri"]],
+                    )
+                )
+            bs.content.content = ft.Container(
+                width=600,
+                content=ft.Column(controls=queuelist, spacing=0, scroll=True),
+                padding=ft.padding.symmetric(vertical=0, horizontal=0),
+                margin=ft.margin.symmetric(horizontal=2, vertical=2),
+            )
+
+    def change_track(e):
+        spc.play_trackcontexturi(e.control.data[0], e.control.data[1])
+        time.sleep(0.2)
+        page.close(bs)
+        make_queue()
+        update_fields()
+        page.update()
+        start_refresh()
 
     def timer_refresh():
         spc.update_playback()
         spc.update_state()
         update_fields()
         page.update()
+        if spc.is_playing == False:
+            stop_timer()
+            long_running_poll()
 
     def play_pause(e):
         spc.play_pause()
+        make_queue()
         update_fields()
         if spc.is_playing == True:
             start_refresh()
+            remove_long_poll()
         else:
+            long_running_poll()
             stop_timer()
         page.update()
 
     def previous_track(e):
         spc.previous_track()
+        make_queue()
         update_fields()
         page.update()
 
     def next_track(e):
         spc.next_track()
+        make_queue()
         update_fields()
         page.update()
 
@@ -196,13 +330,13 @@ def main(page: ft.Page):
         tdur.value = time.strftime("%M:%S", time.gmtime(spc.duration))
         t0.value = time.strftime("%M:%S", time.gmtime(spc.progress))
         tvolume.value = spc.volume
+        extract_pallete()
 
     def seek_track(e):
         spc.seek_track(int(e.control.value * 1000))
         ttime.content.value = e.control.value
 
     def update_volume(e):
-        tvolume.value = e.control.value
         spc.update_volume(int(e.control.value))
         tvolume.update()
 
@@ -239,10 +373,10 @@ def main(page: ft.Page):
         ft.Icons.PLAY_ARROW,
         icon_size=128,
         icon_color=ft.Colors.WHITE,
-        opacity=0,
+        opacity=0.8,
         on_click=play_pause,
     )
-    timg = ft.ElevatedButton(
+    timg = ft.Container(
         content=ft.Stack(
             [
                 ttimg,
@@ -256,7 +390,6 @@ def main(page: ft.Page):
             ],
             alignment=ft.alignment.center,
         ),
-        on_click=play_pause,
     )
     tname = ft.Text(
         spc.trackname,
@@ -320,6 +453,13 @@ def main(page: ft.Page):
         expand=1,
     )
 
+    bs = ft.BottomSheet(
+        enable_drag=True,
+        dismissible=True,
+        is_scroll_controlled=True,
+        show_drag_handle=True,
+        content=ft.Container(padding=20, width=780, content=None),
+    )
     page.views.append(
         ft.View(
             "/",
@@ -338,10 +478,25 @@ def main(page: ft.Page):
                 ),
                 ft.Container(
                     ft.Row(
-                        [ft.Container(tvolume)],
+                        [
+                            ft.Container(tvolume),
+                            ft.ElevatedButton(
+                                "Queue",
+                                on_click=lambda _: page.open(bs),
+                                icon=ft.Icons.ARROW_UPWARD,
+                                style=ft.ButtonStyle(
+                                    icon_size=28,
+                                    text_style=ft.TextStyle(size=24),
+                                    padding=ft.padding.symmetric(horizontal=15),
+                                ),
+                                height=60,
+                            ),
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
                 ),
             ],
+            bgcolor="#000000",
             vertical_alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=2,
@@ -355,12 +510,12 @@ def main(page: ft.Page):
     page.window.full_screen = True
     page.window.title_bar_hidden = True
     page.theme = ft.Theme(
-        color_scheme_seed=ft.Colors.BLUE_200,
         page_transitions=ft.PageTransitionsTheme(windows=ft.PageTransitionTheme.NONE),
         use_material3=True,
     )
     if spc.is_playing == True:
         start_refresh()
+        make_queue()
     page.go("/")
 
 

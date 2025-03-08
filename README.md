@@ -4,7 +4,9 @@ Made for 4,3' touch lcd from wondershare, ui is built for 800x480 so scaling may
 
 for now is just the player, controlling a single device, hardcoded, which is the string "SAMWIN", have fun with that leak.
 
-updates the ui every 1s, if it's playing , otherwise u need to do smth! (like a click)
+it uses pylette to select the colors for the ui bg and iconsbg and the luminance check to change the icons color
+
+updates the ui every 1s, if it's playing , otherwise every 5s, idk the rate limit, wasn't able to find them, so until works it is what it is.
 
 You'll need to set spotipy variables into a credentials.py file into the src folder of the project.
 
@@ -16,7 +18,13 @@ SPOTIPY_THING = "123123123"
 
 ## SCREENSHOT
 
-## Run the app
+![1741449224572](image/README/1741449224572.png)
+
+![1741449240544](image/README/1741449240544.png)
+
+![1741449250935](image/README/1741449250935.png)
+
+Run the app
 
 ### uv
 
