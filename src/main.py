@@ -8,6 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import credentials
 from Pylette import extract_colors
 
+import interfaces
 
 scope = "user-library-read, user-read-playback-state, user-modify-playback-state, user-read-currently-playing, user-read-playback-position, user-read-recently-played"
 
@@ -20,136 +21,123 @@ sp = spotipy.Spotify(
     )
 )
 
+pstate = interfaces.CurrentState()
+
 
 class SpotifyController:
     def __init__(self):
         devices = sp.devices()
         for device in devices["devices"]:
-            if device["name"] == "SAMWIN":
-                self.deviceid = device["id"]
-                self.volume = device["volume_percent"]
+            dev = interfaces.DeviceItem()
+            dev.name = device["name"]
+            dev.id = device["id"]
+            dev.volume = device["volume_percent"]
+            pstate.statedevices[dev.id] = dev
 
-        self.playback_state = sp.current_playback()
-        self.currently_playing = sp.currently_playing()
-        self.queue = None
-
-        if self.playback_state is not None:
-            self.trackimage = self.playback_state["item"]["album"]["images"][1]["url"]
-            self.trackartist = ""
-            for i in self.playback_state["item"]["artists"]:
-                self.trackartist = self.trackartist + i["name"] + ", "
-            self.trackartist = self.trackartist[0:-2]
-            self.trackname = self.playback_state["item"]["name"]
-            self.trackalbum = self.playback_state["item"]["album"]["name"]
-            self.is_playing = self.playback_state["is_playing"]
-            self.duration = self.playback_state["item"]["duration_ms"] / 1000
-            if self.currently_playing is not None:
-                self.progress = self.currently_playing["progress_ms"] / 1000
-            else:
-                self.progress = 0
-        else:
-            self.playback_state = sp.current_user_recently_played(limit=1)
-            self.trackimage = self.playback_state["items"][0]["track"]["album"][
-                "images"
-            ][1]["url"]
-            self.trackartist = ""
-            for i in self.playback_state["items"][0]["track"]["artists"]:
-                self.trackartist = self.trackartist + i["name"] + ", "
-            self.trackartist = self.trackartist[0:-2]
-            self.trackname = self.playback_state["items"][0]["track"]["name"]
-            self.trackalbum = self.playback_state["items"][0]["track"]["album"]["name"]
-            self.duration = (
-                self.playback_state["items"][0]["track"]["duration_ms"] / 1000
-            )
-            self.progress = 0
-            self.is_playing = False
+        self.update_playback()
 
     def update_playback(self):
         self.playback_state = sp.current_playback()
-        # print(self.playback_state)
+
         if self.playback_state is not None:
-            self.trackimage = self.playback_state["item"]["album"]["images"][1]["url"]
-            self.trackartist = ""
+            pstate.stateisplaying = self.playback_state["is_playing"]
+            pstate.trackimage = self.playback_state["item"]["album"]["images"][1]["url"]
+            pstate.trackartists = ""
             for i in self.playback_state["item"]["artists"]:
-                self.trackartist = self.trackartist + i["name"] + ", "
-            self.trackartist = self.trackartist[0:-2]
-            self.trackname = self.playback_state["item"]["name"]
-            self.trackalbum = self.playback_state["item"]["album"]["name"]
-            self.is_playing = self.playback_state["is_playing"]
-            try:
-                self.context = self.playback_state["context"]["uri"]
-            except:
-                self.context = None
+                pstate.trackartists = pstate.trackartists + i["name"] + ", "
+            pstate.trackartists = pstate.trackartists[0:-2]
+            pstate.trackname = self.playback_state["item"]["name"]
+            pstate.trackalbum = self.playback_state["item"]["album"]["name"]
+            pstate.trackduration = int(
+                self.playback_state["item"]["duration_ms"] / 1000
+            )
+            pstate.stateisplaying = self.playback_state["is_playing"]
+            if pstate.stateisplaying == True:
+                pstate.playercontexturi = self.playback_state["context"]["uri"]
+                pstate.stateprogress = int(self.playback_state["progress_ms"] / 1000)
+                self.get_queue()
+                pstate.stateshuffle = self.playback_state["shuffle_state"]
+                self.update_device()
+                self.update_progress()
         else:
             self.playback_state = sp.current_user_recently_played(limit=1)
-            self.trackimage = self.playback_state["items"][0]["track"]["album"][
+            pstate.trackimage = self.playback_state["items"][0]["track"]["album"][
                 "images"
             ][1]["url"]
-            self.trackartist = ""
+            pstate.trackartists = ""
             for i in self.playback_state["items"][0]["track"]["artists"]:
-                self.trackartist = self.trackartist + i["name"] + ", "
-            self.trackartist = self.trackartist[0:-2]
-            self.trackname = self.playback_state["items"][0]["track"]["name"]
-            self.trackalbum = self.playback_state["items"][0]["track"]["album"]["name"]
-            self.is_playing = False
-
-    def update_state(self):
-        if self.is_playing == True:
-            self.currently_playing = sp.currently_playing()
-            self.duration = self.currently_playing["item"]["duration_ms"] / 1000
-            self.progress = self.currently_playing["progress_ms"] / 1000
-            devices = sp.devices()
-            for device in devices["devices"]:
+                pstate.trackartists = pstate.trackartists + i["name"] + ", "
+            pstate.trackartists = pstate.trackartists[0:-2]
+            pstate.trackname = self.playback_state["items"][0]["track"]["name"]
+            pstate.trackalbum = self.playback_state["items"][0]["track"]["album"][
+                "name"
+            ]
+            pstate.trackduration = int(
+                self.playback_state["items"][0]["track"]["duration_ms"] / 1000
+            )
+            pstate.stateprogress = 0
+            pstate.stateisplaying = False
+            for deviceid, device in pstate.statedevices.items():
                 if device["name"] == "SAMWIN":
-                    self.deviceid = device["id"]
-                    self.volume = device["volume_percent"]
+                    pstate.playerdeviceid = device.id
+
+    def update_progress(self):
+        if pstate.stateisplaying == True:
+            self.currently_playing = sp.currently_playing()
+            self.progress = self.currently_playing["progress_ms"] / 1000
+
+    def update_device(self):
+        devices = sp.devices()
+
+        for device in devices["devices"]:
+            if device["name"] == "SAMWIN":
+                pstate.playerdeviceid = device["id"]
+                pstate.statevolume = device["volume_percent"]
 
     def next_track(self):
         sp.next_track()
-        time.sleep(0.4)
+
         self.update_playback()
 
     def previous_track(self):
         sp.previous_track()
-        time.sleep(0.4)
+
         self.update_playback()
 
     def seek_track(self, seek_ms):
-        sp.seek_track(seek_ms, self.deviceid)
-        time.sleep(0.4)
-        self.update_state()
+        sp.seek_track(seek_ms, pstate.playerdeviceid)
+
+        self.update_progress()
 
     def play_pause(self):
-        if self.is_playing == True:
-            sp.pause_playback(self.deviceid)
+        if pstate.stateisplaying == True:
+            sp.pause_playback(pstate.playerdeviceid)
         else:
-            sp.start_playback(self.deviceid)
-        time.sleep(0.3)
+            sp.start_playback(pstate.playerdeviceid)
+
         self.update_playback()
 
     def update_volume(self, volume):
-        sp.volume(volume, self.deviceid)
+        sp.volume(volume, pstate.playerdeviceid)
 
     def get_queue(self):
-        try:
-            sp.shuffle(False, self.deviceid)
-        except Exception as e:
-            print(e)
-        time.sleep(0.5)
+        if pstate.stateshuffle != True:
+            sp.shuffle(False, pstate.playerdeviceid)
+        else:
+            sp.shuffle(True, pstate.playerdeviceid)
+
         que = sp.queue()
-        time.sleep(0.2)
-        self.queue = que["queue"]
+
+        pstate.playerqueue = que["queue"]
 
     def play_trackcontexturi(self, contexturi, trackuri):
         offset = {"uri": trackuri}
-        sp.start_playback(self.deviceid, context_uri=contexturi, offset=offset)
+        sp.start_playback(pstate.playerdeviceid, context_uri=contexturi, offset=offset)
         self.update_playback()
-        time.sleep(0.3)
 
     def play_trackuri(self, trackuri):
-        sp.start_playback(self.deviceid, uris=trackuri)
+        sp.start_playback(pstate.playerdeviceid, uris=trackuri)
         self.update_playback()
-        time.sleep(0.3)
 
 
 spc = SpotifyController()
@@ -182,12 +170,13 @@ def main(page: ft.Page):
         spc.update_playback()
         update_fields()
         page.update()
-        if spc.is_playing == True:
+        if pstate.stateisplaying == True:
             start_refresh()
             remove_long_poll()
 
     def start_refresh():
-        try:
+        job = scheduler.get_job("timer")
+        if job is None:
             scheduler.add_job(
                 func=timer_refresh,
                 trigger="interval",
@@ -195,19 +184,18 @@ def main(page: ft.Page):
                 id="timer",
                 max_instances=1,
             )
-
-        except Exception as e:
-            scheduler.resume_job(job_id="timer", jobstore="default")
+        else:
+            if job.next_run_time is None:
+                scheduler.resume_job(job_id="timer", jobstore="default")
 
     def stop_timer():
-        try:
+        job = scheduler.get_job("timer")
+        if job is not None:
             scheduler.remove_job(job_id="timer", jobstore="default")
-        except Exception as e:
-            pass
 
     def extract_pallete():
         palette = extract_colors(
-            image=spc.trackimage, palette_size=5, sort_mode="frequency", mode="KM"
+            image=pstate.trackimage, palette_size=5, sort_mode="frequency", mode="KM"
         )
         most_common_color = palette[0].rgb
         rgbval = (
@@ -236,9 +224,12 @@ def main(page: ft.Page):
 
     def make_queue():
         spc.get_queue()
-        if spc.queue is not None:
+        context = (
+            pstate.playercontexturi if pstate.playercontexturi is not None else False
+        )
+        if pstate.playerqueue is not None:
             queuelist = []
-            for i in spc.queue:
+            for i in pstate.playerqueue:
                 artists = ""
                 for x in i["artists"]:
                     artists = artists + x["name"] + ", "
@@ -256,7 +247,7 @@ def main(page: ft.Page):
                         subtitle=ft.Text(artists),
                         trailing=ft.IconButton(ft.Icons.PLAY_ARROW),
                         on_click=change_track,
-                        data=[spc.context, i["uri"]],
+                        data=[context, i["uri"]],
                     )
                 )
             bs.content.content = ft.Container(
@@ -267,6 +258,8 @@ def main(page: ft.Page):
             )
 
     def change_track(e):
+        if e.control.data[0] == False:
+            spc.play_trackuri([e.control.data[1]])
         spc.play_trackcontexturi(e.control.data[0], e.control.data[1])
         time.sleep(0.2)
         page.close(bs)
@@ -277,10 +270,9 @@ def main(page: ft.Page):
 
     def timer_refresh():
         spc.update_playback()
-        spc.update_state()
         update_fields()
         page.update()
-        if spc.is_playing == False:
+        if pstate.stateisplaying == False:
             stop_timer()
             long_running_poll()
 
@@ -288,13 +280,13 @@ def main(page: ft.Page):
         spc.play_pause()
         make_queue()
         update_fields()
-        if spc.is_playing == True:
+        page.update()
+        if pstate.stateisplaying == True:
             start_refresh()
             remove_long_poll()
         else:
             long_running_poll()
             stop_timer()
-        page.update()
 
     def previous_track(e):
         spc.previous_track()
@@ -309,7 +301,7 @@ def main(page: ft.Page):
         page.update()
 
     def update_fields():
-        if spc.is_playing == True:
+        if pstate.stateisplaying == True:
             tticonbtn.icon = ft.Icons.PAUSE
             tticonbtn.opacity = 0
             ttimg.opacity = 1
@@ -321,15 +313,15 @@ def main(page: ft.Page):
             ttimg.opacity = 0.5
             tticonbtn.icon = ft.Icons.PLAY_ARROW
             tticonbtn.opacity = 0.8
-        ttimg.src = spc.trackimage
-        tname.value = spc.trackname
-        tartist.value = "### **" + spc.trackartist + "**"
-        talbum.value = spc.trackalbum
-        ttime.content.value = int(spc.progress)
-        ttime.content.max = int(spc.duration)
-        tdur.value = time.strftime("%M:%S", time.gmtime(spc.duration))
-        t0.value = time.strftime("%M:%S", time.gmtime(spc.progress))
-        tvolume.value = spc.volume
+        ttimg.src = pstate.trackimage
+        tname.value = pstate.trackname
+        tartist.value = "### **" + pstate.trackartists + "**"
+        talbum.value = pstate.trackalbum
+        ttime.content.value = int(pstate.stateprogress)
+        ttime.content.max = int(pstate.trackduration)
+        tdur.value = time.strftime("%M:%S", time.gmtime(pstate.trackduration))
+        t0.value = time.strftime("%M:%S", time.gmtime(pstate.stateprogress))
+        tvolume.value = pstate.statevolume
         extract_pallete()
 
     def seek_track(e):
@@ -338,32 +330,34 @@ def main(page: ft.Page):
 
     def update_volume(e):
         spc.update_volume(int(e.control.value))
-        tvolume.update()
+        tvolume.value = e.control.data
 
-    tvolume = ft.Slider(min=0, max=100, value=spc.volume, on_change_end=update_volume)
+    tvolume = ft.Slider(
+        min=0, max=100, value=pstate.statevolume, on_change_end=update_volume
+    )
 
     ttime = ft.Container(
         content=ft.Slider(
-            value=int(spc.progress),
+            value=int(pstate.stateprogress),
             min=0,
-            max=int(spc.duration),
+            max=int(pstate.trackduration),
             on_change_end=seek_track,
             width=250,
         )
     )
     tdur = ft.Text(
-        time.strftime("%M:%S", time.gmtime(spc.duration)),
+        time.strftime("%M:%S", time.gmtime(pstate.trackduration)),
         size=12,
         color=ft.Colors.WHITE,
     )
 
     t0 = ft.Text(
-        time.strftime("%M:%S", time.gmtime(spc.progress)),
+        time.strftime("%M:%S", time.gmtime(pstate.stateprogress)),
         size=12,
         color=ft.Colors.WHITE,
     )
     ttimg = ft.Image(
-        src=spc.trackimage,
+        src=pstate.trackimage,
         width=200,
         height=200,
         fit=ft.ImageFit.CONTAIN,
@@ -392,15 +386,15 @@ def main(page: ft.Page):
         ),
     )
     tname = ft.Text(
-        spc.trackname,
+        pstate.trackname,
         size=24,
         weight=ft.FontWeight.BOLD,
         # overflow=ft.TextOverflow.ELLIPSIS,
         text_align=ft.TextAlign.CENTER,
         max_lines=2,
     )
-    tartist = ft.Markdown("### **" + spc.trackartist + "**")
-    talbum = ft.Text(spc.trackalbum)
+    tartist = ft.Markdown("### **" + pstate.trackartists + "**")
+    talbum = ft.Text(pstate.trackalbum)
 
     prevtrack = ft.IconButton(
         icon=ft.Icons.SKIP_PREVIOUS_ROUNDED,
@@ -417,7 +411,7 @@ def main(page: ft.Page):
         on_click=next_track,
     )
     play_fab = ft.FloatingActionButton(
-        icon=ft.Icons.PLAY_ARROW if not spc.is_playing else ft.Icons.PAUSE,
+        icon=ft.Icons.PLAY_ARROW if not pstate.stateisplaying else ft.Icons.PAUSE,
         on_click=play_pause,
         scale=2,
     )
@@ -513,9 +507,15 @@ def main(page: ft.Page):
         page_transitions=ft.PageTransitionsTheme(windows=ft.PageTransitionTheme.NONE),
         use_material3=True,
     )
-    if spc.is_playing == True:
+    if pstate.stateisplaying == True:
         start_refresh()
+        remove_long_poll()
         make_queue()
+    else:
+        long_running_poll()
+        stop_timer()
+        update_fields()
+
     page.go("/")
 
 
