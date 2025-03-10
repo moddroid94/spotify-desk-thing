@@ -11,7 +11,7 @@ from Pylette import extract_colors
 import stateclass as sc
 import constructor as cs
 
-scope = "user-library-read, user-read-playback-state, user-modify-playback-state, user-read-currently-playing, user-read-playback-position, user-read-recently-played"
+scope = "user-library-read, user-read-playback-state, user-modify-playback-state, user-read-currently-playing, user-read-playback-position, user-read-recently-played, user-read-private, user-read-email, playlist-read-private, playlist-read-collaborative"
 
 sp = spotipy.Spotify(
     auth_manager=SpotifyOAuth(
@@ -34,6 +34,7 @@ class SpotifyController:
 
         devices = sp.devices()
         ss.userdevices = cs.get_user_devices(devices)
+        self.get_user_playlists()
         self.update_playback()
 
     def get_queue(self):
@@ -43,6 +44,23 @@ class SpotifyController:
             return que
         except:
             return None
+
+    def get_user_playlists(self):
+        me = sp.me()
+        useruri = me["uri"]
+        savedplaylist = sp.current_user_saved_tracks(limit=50)
+        playlistsJSON = sp.current_user_playlists(limit=25)
+        tracksdict = cs.get_playlist_items(savedplaylist)
+        savedtracks = sc.PlaylistItem(
+            name="Liked Songs",
+            image="None",
+            uri=useruri + ":collection",
+            tracks=tracksdict,
+        )
+        playlistdict: dict[str, sc.PlaylistItem] = {}
+        playlistdict[useruri + ":collection"] = savedtracks
+        playlistdict.update(cs.get_user_playlists(playlistsJSON))
+        ss.userplaylists = playlistdict
 
     def update_playback(self, progress_only=False, volume_only=False):
         self.playback_state = sp.current_playback()
@@ -211,21 +229,24 @@ def main(page: ft.Page):
         nexttrack.style.bgcolor = rgbcol2
         prevtrack.style.bgcolor = rgbcol2
 
-    def make_queue():
-        if ss.actualqueue is not None:
+    def is_first_item():
+        try:
             for uri, i in ss.actualqueue.items():
                 # this is crazy, but it just simpler that checking the queue in other places
                 # rplaces ui only if the first track changes or if the check fails
-                try:
-                    for x in bs.content.content.content.controls:
-                        if i.name == x.title.value:
-                            return
-                        else:
-                            break
-                    break
-                except:
-                    print("error in the deep")
-                    break
+
+                for x in bs.content.content.content.controls:
+                    if i.name == x.title.value:
+                        return True
+                    else:
+                        return False
+        except:
+            return False
+
+    def make_queue():
+        if ss.actualqueue is not None:
+            if is_first_item():
+                return
             queuelist = []
             for uri, track in ss.actualqueue.items():
                 queuelist.append(
@@ -243,7 +264,7 @@ def main(page: ft.Page):
                             time.strftime("%M:%S", time.gmtime(track.duration))
                         ),
                         on_click=change_track,
-                        data=[ss.playerstate.contexturi, uri],
+                        data=[ss.playerstate.contexturi, uri, False],
                     )
                 )
             bs.content.content = ft.Container(
@@ -252,20 +273,87 @@ def main(page: ft.Page):
                 padding=ft.padding.symmetric(vertical=0, horizontal=0),
                 margin=ft.margin.symmetric(horizontal=2, vertical=2),
             )
-        else:
-            bs.content.content = ft.Container(
+
+    def make_playlists():
+        if ss.userplaylists is not None:
+            queuelist = []
+            for uri, playlist in ss.userplaylists.items():
+                queuelist.append(
+                    ft.ListTile(
+                        leading=ft.Image(
+                            src=playlist.image,
+                            width=32,
+                            height=32,
+                            fit=ft.ImageFit.CONTAIN,
+                            border_radius=ft.border_radius.all(5),
+                        ),
+                        title=ft.Text(playlist.name),
+                        trailing=ft.IconButton(
+                            ft.Icons.ARROW_CIRCLE_RIGHT,
+                            on_click=explore_playlist,
+                            data=[uri],
+                        ),
+                        on_click=explore_playlist,
+                        data=[uri],
+                    )
+                )
+            bs1.content.content = ft.Container(
                 width=600,
-                content=ft.Column(controls=[], spacing=0, scroll=True),
+                content=ft.Column(controls=queuelist, spacing=0, scroll=True),
                 padding=ft.padding.symmetric(vertical=0, horizontal=0),
                 margin=ft.margin.symmetric(horizontal=2, vertical=2),
             )
 
+    def explore_playlist(e):
+        playlisturi = e.control.data[0]
+        if not bool(ss.userplaylists[playlisturi].tracks):
+            playlistitemsJSON = sp.playlist_items(
+                playlist_id=playlisturi,
+                fields="items(track(name,artists(name),album(name,images),duration_ms,uri))",
+            )
+            ss.userplaylists[playlisturi].tracks = cs.get_playlist_items(
+                playlistitemsJSON
+            )
+        tracklist = []
+        for uri, track in ss.userplaylists[playlisturi].tracks.items():
+            tracklist.append(
+                ft.ListTile(
+                    leading=ft.Image(
+                        src=track.image,
+                        width=32,
+                        height=32,
+                        fit=ft.ImageFit.CONTAIN,
+                        border_radius=ft.border_radius.all(5),
+                    ),
+                    title=ft.Text(track.name),
+                    subtitle=ft.Text(track.artists),
+                    trailing=ft.Text(
+                        time.strftime("%M:%S", time.gmtime(track.duration))
+                    ),
+                    on_click=change_track,
+                    data=[playlisturi, uri, True],
+                )
+            )
+        bs2.content.content = ft.Container(
+            width=600,
+            content=ft.Column(controls=tracklist, spacing=0, scroll=True),
+            padding=ft.padding.symmetric(vertical=0, horizontal=0),
+            margin=ft.margin.symmetric(horizontal=2, vertical=2),
+        )
+        page.open(bs2)
+
     def change_track(e):
-        if e.control.data[0] == "":
+        if e.control.data[0] == "" or e.control.data[0] == "none":
             spc.play_trackuri([e.control.data[1]])
         else:
             spc.play_trackcontexturi(e.control.data[0], e.control.data[1])
-        page.close(bs)
+
+        if e.control.data[2] == True:
+            page.close(bs2)
+            page.close(bs1)
+        else:
+            page.close(bs)
+
         spc.update_playback()
         make_queue()
         update_fields()
@@ -311,7 +399,7 @@ def main(page: ft.Page):
             tticonbtn.opacity = 0.8
         ttimg.src = ss.actualtrack.image
         tname.value = ss.actualtrack.name
-        tartist.value = "### **" + ss.actualtrack.artists + "**"
+        tartist.value = ss.actualtrack.artists
         talbum.value = ss.actualtrack.album
 
         ttime.content.max = ss.actualtrack.duration
@@ -392,7 +480,14 @@ def main(page: ft.Page):
         text_align=ft.TextAlign.CENTER,
         max_lines=2,
     )
-    tartist = ft.Markdown("### **" + ss.actualtrack.artists + "**")
+    tartist = ft.Text(
+        ss.actualtrack.artists,
+        size=20,
+        weight=ft.FontWeight.BOLD,
+        # overflow=ft.TextOverflow.ELLIPSIS,
+        text_align=ft.TextAlign.CENTER,
+        max_lines=1,
+    )
     talbum = ft.Text(ss.actualtrack.album)
 
     prevtrack = ft.IconButton(
@@ -454,6 +549,22 @@ def main(page: ft.Page):
         content=ft.Container(padding=20, width=780, content=None),
     )
 
+    bs1 = ft.BottomSheet(
+        enable_drag=True,
+        dismissible=True,
+        is_scroll_controlled=True,
+        show_drag_handle=True,
+        content=ft.Container(padding=20, width=780, content=None),
+    )
+
+    bs2 = ft.BottomSheet(
+        enable_drag=True,
+        dismissible=True,
+        is_scroll_controlled=True,
+        show_drag_handle=True,
+        content=ft.Container(padding=20, width=780, content=None),
+    )
+
     toprow = ft.Row(
         [
             prevtrackcol,
@@ -466,6 +577,17 @@ def main(page: ft.Page):
     bottomrow = ft.Row(
         [
             ft.Container(tvolume),
+            ft.ElevatedButton(
+                "Playlists",
+                on_click=lambda _: page.open(bs1),
+                icon=ft.Icons.LIST,
+                style=ft.ButtonStyle(
+                    icon_size=28,
+                    text_style=ft.TextStyle(size=22),
+                    padding=ft.padding.symmetric(horizontal=15),
+                ),
+                height=60,
+            ),
             ft.ElevatedButton(
                 "Queue",
                 on_click=lambda _: page.open(bs),
@@ -509,6 +631,7 @@ def main(page: ft.Page):
         page_transitions=ft.PageTransitionsTheme(windows=ft.PageTransitionTheme.NONE),
         use_material3=True,
     )
+    make_playlists()
     if ss.playerstate.isplaying == True:
         start_refresh()
         remove_long_poll()
