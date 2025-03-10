@@ -18,15 +18,13 @@ SPOTIPY_THING = "123123123"
 
 ## SCREENSHOT
 
-![1741449224572](image/README/1741449224572.png)
+![1741645799789](image/README/1741645799789.png)
 
-![1741449240544](image/README/1741449240544.png)
+![1741645555876](image/README/1741645555876.png)
 
-![1741449250935](image/README/1741449250935.png)
+![1741645853040](image/README/1741645853040.png)
 
 Run the app
-
-
 
 Run as a desktop app:
 
@@ -57,6 +55,7 @@ poetry run flet run
 
 Run as a web app:
 it main not work this way, idk
+
 ```
 poetry run flet run --web
 ```

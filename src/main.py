@@ -577,27 +577,35 @@ def main(page: ft.Page):
     bottomrow = ft.Row(
         [
             ft.Container(tvolume),
-            ft.ElevatedButton(
-                "Playlists",
-                on_click=lambda _: page.open(bs1),
-                icon=ft.Icons.LIST,
-                style=ft.ButtonStyle(
-                    icon_size=28,
-                    text_style=ft.TextStyle(size=22),
-                    padding=ft.padding.symmetric(horizontal=15),
-                ),
-                height=60,
-            ),
-            ft.ElevatedButton(
-                "Queue",
-                on_click=lambda _: page.open(bs),
-                icon=ft.Icons.ARROW_UPWARD,
-                style=ft.ButtonStyle(
-                    icon_size=28,
-                    text_style=ft.TextStyle(size=24),
-                    padding=ft.padding.symmetric(horizontal=15),
-                ),
-                height=60,
+            ft.Container(
+                ft.Row(
+                    [
+                        ft.ElevatedButton(
+                            "Playlists",
+                            on_click=lambda _: page.open(bs1),
+                            icon=ft.Icons.LIST,
+                            style=ft.ButtonStyle(
+                                icon_size=28,
+                                text_style=ft.TextStyle(size=22),
+                                padding=ft.padding.symmetric(horizontal=15),
+                            ),
+                            height=60,
+                        ),
+                        ft.ElevatedButton(
+                            "Queue",
+                            on_click=lambda _: page.open(bs),
+                            icon=ft.Icons.ARROW_UPWARD,
+                            style=ft.ButtonStyle(
+                                icon_size=28,
+                                text_style=ft.TextStyle(size=24),
+                                padding=ft.padding.symmetric(horizontal=15),
+                            ),
+                            height=60,
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.END,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                )
             ),
         ],
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
