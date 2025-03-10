@@ -8,7 +8,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import credentials
 from Pylette import extract_colors
 
-import interfaces
+import stateclass as sc
+import constructor as cs
 
 scope = "user-library-read, user-read-playback-state, user-modify-playback-state, user-read-currently-playing, user-read-playback-position, user-read-recently-played"
 
@@ -21,122 +22,106 @@ sp = spotipy.Spotify(
     )
 )
 
-pstate = interfaces.CurrentState()
+ss = sc.CurrentState()
+
+scheduler = BackgroundScheduler()
+scheduler.start()
 
 
 class SpotifyController:
     def __init__(self):
-        devices = sp.devices()
-        for device in devices["devices"]:
-            dev = interfaces.DeviceItem()
-            dev.name = device["name"]
-            dev.id = device["id"]
-            dev.volume = device["volume_percent"]
-            pstate.statedevices[dev.id] = dev
+        self.playback_state = None
 
+        devices = sp.devices()
+        ss.userdevices = cs.get_user_devices(devices)
         self.update_playback()
 
-    def update_playback(self):
-        self.playback_state = sp.current_playback()
+    def get_queue(self):
+        queue = sp.queue()
+        try:
+            que = queue["queue"]
+            return que
+        except:
+            return None
 
+    def update_playback(self, progress_only=False, volume_only=False):
+        self.playback_state = sp.current_playback()
         if self.playback_state is not None:
-            pstate.stateisplaying = self.playback_state["is_playing"]
-            pstate.trackimage = self.playback_state["item"]["album"]["images"][1]["url"]
-            pstate.trackartists = ""
-            for i in self.playback_state["item"]["artists"]:
-                pstate.trackartists = pstate.trackartists + i["name"] + ", "
-            pstate.trackartists = pstate.trackartists[0:-2]
-            pstate.trackname = self.playback_state["item"]["name"]
-            pstate.trackalbum = self.playback_state["item"]["album"]["name"]
-            pstate.trackduration = int(
-                self.playback_state["item"]["duration_ms"] / 1000
-            )
-            pstate.stateisplaying = self.playback_state["is_playing"]
-            if pstate.stateisplaying == True:
-                pstate.playercontexturi = self.playback_state["context"]["uri"]
-                pstate.stateprogress = int(self.playback_state["progress_ms"] / 1000)
-                self.get_queue()
-                pstate.stateshuffle = self.playback_state["shuffle_state"]
-                self.update_device()
-                self.update_progress()
+            if progress_only:
+                ss.playerstate = cs.get_player_state(self.playback_state)
+                return
+            if volume_only:
+                ss.actualdevice = cs.get_current_device(
+                    self.playback_state, ss.userdevices
+                )
+                return
+            ss.actualdevice = cs.get_current_device(self.playback_state, ss.userdevices)
+            ss.playerstate = cs.get_player_state(self.playback_state)
+            ss.actualtrack = cs.get_current_track(self.playback_state)
+            ss.actualqueue = cs.get_current_queue(self.get_queue())
         else:
             self.playback_state = sp.current_user_recently_played(limit=1)
-            pstate.trackimage = self.playback_state["items"][0]["track"]["album"][
-                "images"
-            ][1]["url"]
-            pstate.trackartists = ""
-            for i in self.playback_state["items"][0]["track"]["artists"]:
-                pstate.trackartists = pstate.trackartists + i["name"] + ", "
-            pstate.trackartists = pstate.trackartists[0:-2]
-            pstate.trackname = self.playback_state["items"][0]["track"]["name"]
-            pstate.trackalbum = self.playback_state["items"][0]["track"]["album"][
-                "name"
-            ]
-            pstate.trackduration = int(
-                self.playback_state["items"][0]["track"]["duration_ms"] / 1000
+            ss.playerstate = sc.PlayerState("")
+            ss.actualtrack = cs.get_current_track(
+                self.playback_state, from_history=True
             )
-            pstate.stateprogress = 0
-            pstate.stateisplaying = False
-            for deviceid, device in pstate.statedevices.items():
-                if device["name"] == "SAMWIN":
-                    pstate.playerdeviceid = device.id
+            for deviceid, device in ss.userdevices.items():
+                ss.actualdevice = device if device.name == "SAMWIN" else None
 
-    def update_progress(self):
-        if pstate.stateisplaying == True:
-            self.currently_playing = sp.currently_playing()
-            self.progress = self.currently_playing["progress_ms"] / 1000
-
-    def update_device(self):
+    def update_device(self, device_name: str | None = None):
         devices = sp.devices()
-
-        for device in devices["devices"]:
-            if device["name"] == "SAMWIN":
-                pstate.playerdeviceid = device["id"]
-                pstate.statevolume = device["volume_percent"]
+        if device_name is None or device_name == ss.actualdevice.name:
+            for dev in devices["devices"]:
+                if dev["name"] == ss.actualdevice.name:
+                    ss.actualdevice.id = dev["id"]
+                    ss.actualdevice.volume = dev["volume_percent"]
+                    return
+        else:
+            for dev in devices["devices"]:
+                if dev["name"] == device_name:
+                    newdev = sc.DeviceItem()
+                    newdev.name = dev["name"]
+                    newdev.id = dev["id"]
+                    newdev.volume = dev["volume_percent"]
+                    ss.userdevices[newdev.id] = newdev
+                    return
 
     def next_track(self):
         sp.next_track()
-
         self.update_playback()
 
     def previous_track(self):
         sp.previous_track()
-
         self.update_playback()
 
     def seek_track(self, seek_ms):
-        sp.seek_track(seek_ms, pstate.playerdeviceid)
+        sp.seek_track(seek_ms, ss.actualdevice.id)
+        self.update_playback(progress_only=True)
 
-        self.update_progress()
+    def toggle_shuffle(self):
+        if not ss.playerstate.shuffle:
+            sp.shuffle(False, ss.actualdevice.id)
+        else:
+            sp.shuffle(True, ss.actualdevice.id)
 
     def play_pause(self):
-        if pstate.stateisplaying == True:
-            sp.pause_playback(pstate.playerdeviceid)
+        if ss.playerstate.isplaying == True:
+            sp.pause_playback(ss.actualdevice.id)
         else:
-            sp.start_playback(pstate.playerdeviceid)
-
+            sp.start_playback(ss.actualdevice.id)
         self.update_playback()
 
     def update_volume(self, volume):
-        sp.volume(volume, pstate.playerdeviceid)
-
-    def get_queue(self):
-        if pstate.stateshuffle != True:
-            sp.shuffle(False, pstate.playerdeviceid)
-        else:
-            sp.shuffle(True, pstate.playerdeviceid)
-
-        que = sp.queue()
-
-        pstate.playerqueue = que["queue"]
+        sp.volume(volume, ss.actualdevice.id)
+        self.update_playback(volume_only=True)
 
     def play_trackcontexturi(self, contexturi, trackuri):
         offset = {"uri": trackuri}
-        sp.start_playback(pstate.playerdeviceid, context_uri=contexturi, offset=offset)
+        sp.start_playback(ss.actualdevice.id, context_uri=contexturi, offset=offset)
         self.update_playback()
 
-    def play_trackuri(self, trackuri):
-        sp.start_playback(pstate.playerdeviceid, uris=trackuri)
+    def play_trackuri(self, trackuri: list[str]):
+        sp.start_playback(ss.actualdevice.id, uris=trackuri)
         self.update_playback()
 
 
@@ -144,10 +129,6 @@ spc = SpotifyController()
 
 
 def main(page: ft.Page):
-    scheduler = BackgroundScheduler()
-    scheduler.start()
-    job = None
-
     def long_running_poll():
         try:
             scheduler.add_job(
@@ -169,8 +150,8 @@ def main(page: ft.Page):
     def long_poll_check():
         spc.update_playback()
         update_fields()
-        page.update()
-        if pstate.stateisplaying == True:
+
+        if ss.playerstate.isplaying == True:
             start_refresh()
             remove_long_poll()
 
@@ -193,9 +174,17 @@ def main(page: ft.Page):
         if job is not None:
             scheduler.remove_job(job_id="timer", jobstore="default")
 
-    def extract_pallete():
+    def timer_refresh():
+        spc.update_playback()
+        update_fields()
+
+        if ss.playerstate.isplaying == False:
+            stop_timer()
+            long_running_poll()
+
+    def extract_palette(image):
         palette = extract_colors(
-            image=pstate.trackimage, palette_size=5, sort_mode="frequency", mode="KM"
+            image=image, palette_size=5, sort_mode="frequency", mode="KM"
         )
         most_common_color = palette[0].rgb
         rgbval = (
@@ -205,12 +194,6 @@ def main(page: ft.Page):
         )
         least_common_color = palette[1].rgb
         collum = palette[1].luminance
-        if collum > 100:
-            nexttrack.icon_color = "#000000"
-            prevtrack.icon_color = "#000000"
-        else:
-            nexttrack.icon_color = "#ffffff"
-            prevtrack.icon_color = "#ffffff"
         rgbval2 = (
             least_common_color[0],
             least_common_color[1],
@@ -219,35 +202,48 @@ def main(page: ft.Page):
         rgbcol = "#60%02x%02x%02x" % (rgbval)
         rgbcol2 = "#%02x%02x%02x" % (rgbval2)
         page.views[-1].bgcolor = rgbcol
+        if collum > 100:
+            nexttrack.icon_color = "#000000"
+            prevtrack.icon_color = "#000000"
+        else:
+            nexttrack.icon_color = "#ffffff"
+            prevtrack.icon_color = "#ffffff"
         nexttrack.style.bgcolor = rgbcol2
         prevtrack.style.bgcolor = rgbcol2
 
     def make_queue():
-        spc.get_queue()
-        context = (
-            pstate.playercontexturi if pstate.playercontexturi is not None else False
-        )
-        if pstate.playerqueue is not None:
+        if ss.actualqueue is not None:
+            for uri, i in ss.actualqueue.items():
+                # this is crazy, but it just simpler that checking the queue in other places
+                # rplaces ui only if the first track changes or if the check fails
+                try:
+                    for x in bs.content.content.content.controls:
+                        if i.name == x.title.value:
+                            return
+                        else:
+                            break
+                    break
+                except:
+                    print("error in the deep")
+                    break
             queuelist = []
-            for i in pstate.playerqueue:
-                artists = ""
-                for x in i["artists"]:
-                    artists = artists + x["name"] + ", "
-                artists = artists[0:-2]
+            for uri, track in ss.actualqueue.items():
                 queuelist.append(
                     ft.ListTile(
                         leading=ft.Image(
-                            src=i["album"]["images"][2]["url"],
+                            src=track.image,
                             width=32,
                             height=32,
                             fit=ft.ImageFit.CONTAIN,
                             border_radius=ft.border_radius.all(5),
                         ),
-                        title=ft.Text(i["name"]),
-                        subtitle=ft.Text(artists),
-                        trailing=ft.IconButton(ft.Icons.PLAY_ARROW),
+                        title=ft.Text(track.name),
+                        subtitle=ft.Text(track.artists),
+                        trailing=ft.Text(
+                            time.strftime("%M:%S", time.gmtime(track.duration))
+                        ),
                         on_click=change_track,
-                        data=[context, i["uri"]],
+                        data=[ss.playerstate.contexturi, uri],
                     )
                 )
             bs.content.content = ft.Container(
@@ -256,32 +252,31 @@ def main(page: ft.Page):
                 padding=ft.padding.symmetric(vertical=0, horizontal=0),
                 margin=ft.margin.symmetric(horizontal=2, vertical=2),
             )
+        else:
+            bs.content.content = ft.Container(
+                width=600,
+                content=ft.Column(controls=[], spacing=0, scroll=True),
+                padding=ft.padding.symmetric(vertical=0, horizontal=0),
+                margin=ft.margin.symmetric(horizontal=2, vertical=2),
+            )
 
     def change_track(e):
-        if e.control.data[0] == False:
+        if e.control.data[0] == "":
             spc.play_trackuri([e.control.data[1]])
-        spc.play_trackcontexturi(e.control.data[0], e.control.data[1])
-        time.sleep(0.2)
+        else:
+            spc.play_trackcontexturi(e.control.data[0], e.control.data[1])
         page.close(bs)
+        spc.update_playback()
         make_queue()
         update_fields()
-        page.update()
         start_refresh()
-
-    def timer_refresh():
-        spc.update_playback()
-        update_fields()
-        page.update()
-        if pstate.stateisplaying == False:
-            stop_timer()
-            long_running_poll()
 
     def play_pause(e):
         spc.play_pause()
         make_queue()
         update_fields()
-        page.update()
-        if pstate.stateisplaying == True:
+
+        if ss.playerstate.isplaying == True:
             start_refresh()
             remove_long_poll()
         else:
@@ -292,72 +287,76 @@ def main(page: ft.Page):
         spc.previous_track()
         make_queue()
         update_fields()
-        page.update()
 
     def next_track(e):
         spc.next_track()
         make_queue()
         update_fields()
-        page.update()
 
     def update_fields():
-        if pstate.stateisplaying == True:
+        if ss.playerstate.isplaying == True:
             tticonbtn.icon = ft.Icons.PAUSE
             tticonbtn.opacity = 0
             ttimg.opacity = 1
             ttimg.color = None
             ttimg.color_blend_mode = ft.BlendMode.COLOR
+            ttime.content.value = ss.playerstate.progress
+            t0.value = time.strftime("%M:%S", time.gmtime(ss.playerstate.progress))
+            make_queue()
         else:
             ttimg.color = ft.Colors.BLACK
             ttimg.color_blend_mode = ft.BlendMode.SATURATION
             ttimg.opacity = 0.5
             tticonbtn.icon = ft.Icons.PLAY_ARROW
             tticonbtn.opacity = 0.8
-        ttimg.src = pstate.trackimage
-        tname.value = pstate.trackname
-        tartist.value = "### **" + pstate.trackartists + "**"
-        talbum.value = pstate.trackalbum
-        ttime.content.value = int(pstate.stateprogress)
-        ttime.content.max = int(pstate.trackduration)
-        tdur.value = time.strftime("%M:%S", time.gmtime(pstate.trackduration))
-        t0.value = time.strftime("%M:%S", time.gmtime(pstate.stateprogress))
-        tvolume.value = pstate.statevolume
-        extract_pallete()
+        ttimg.src = ss.actualtrack.image
+        tname.value = ss.actualtrack.name
+        tartist.value = "### **" + ss.actualtrack.artists + "**"
+        talbum.value = ss.actualtrack.album
+
+        ttime.content.max = ss.actualtrack.duration
+        tdur.value = time.strftime("%M:%S", time.gmtime(ss.actualtrack.duration))
+
+        tvolume.value = ss.actualdevice.volume
+        extract_palette(ss.actualtrack.image)
+        page.update()
 
     def seek_track(e):
         spc.seek_track(int(e.control.value * 1000))
         ttime.content.value = e.control.value
+        ttime.update()
 
     def update_volume(e):
         spc.update_volume(int(e.control.value))
-        tvolume.value = e.control.data
+        tvolume.value = e.control.value
+        tvolume.update()
 
     tvolume = ft.Slider(
-        min=0, max=100, value=pstate.statevolume, on_change_end=update_volume
+        min=0, max=100, value=ss.actualdevice.volume, on_change_end=update_volume
     )
 
     ttime = ft.Container(
         content=ft.Slider(
-            value=int(pstate.stateprogress),
+            value=int(ss.playerstate.progress),
             min=0,
-            max=int(pstate.trackduration),
+            max=int(ss.actualtrack.duration),
             on_change_end=seek_track,
             width=250,
         )
     )
     tdur = ft.Text(
-        time.strftime("%M:%S", time.gmtime(pstate.trackduration)),
+        time.strftime("%M:%S", time.gmtime(ss.actualtrack.duration)),
         size=12,
         color=ft.Colors.WHITE,
     )
 
     t0 = ft.Text(
-        time.strftime("%M:%S", time.gmtime(pstate.stateprogress)),
+        time.strftime("%M:%S", time.gmtime(ss.playerstate.progress)),
         size=12,
         color=ft.Colors.WHITE,
     )
     ttimg = ft.Image(
-        src=pstate.trackimage,
+        src=ss.actualtrack.image,
         width=200,
         height=200,
         fit=ft.ImageFit.CONTAIN,
@@ -386,15 +385,15 @@ def main(page: ft.Page):
         ),
     )
     tname = ft.Text(
-        pstate.trackname,
+        ss.actualtrack.name,
         size=24,
         weight=ft.FontWeight.BOLD,
         # overflow=ft.TextOverflow.ELLIPSIS,
         text_align=ft.TextAlign.CENTER,
         max_lines=2,
     )
-    tartist = ft.Markdown("### **" + pstate.trackartists + "**")
-    talbum = ft.Text(pstate.trackalbum)
+    tartist = ft.Markdown("### **" + ss.actualtrack.artists + "**")
+    talbum = ft.Text(ss.actualtrack.album)
 
     prevtrack = ft.IconButton(
         icon=ft.Icons.SKIP_PREVIOUS_ROUNDED,
@@ -411,7 +410,7 @@ def main(page: ft.Page):
         on_click=next_track,
     )
     play_fab = ft.FloatingActionButton(
-        icon=ft.Icons.PLAY_ARROW if not pstate.stateisplaying else ft.Icons.PAUSE,
+        icon=ft.Icons.PLAY_ARROW if not ss.playerstate.isplaying else ft.Icons.PAUSE,
         on_click=play_pause,
         scale=2,
     )
@@ -454,41 +453,44 @@ def main(page: ft.Page):
         show_drag_handle=True,
         content=ft.Container(padding=20, width=780, content=None),
     )
+
+    toprow = ft.Row(
+        [
+            prevtrackcol,
+            trackinfocol,
+            nexttrackcol,
+        ],
+        alignment=ft.MainAxisAlignment.SPACE_AROUND,
+    )
+
+    bottomrow = ft.Row(
+        [
+            ft.Container(tvolume),
+            ft.ElevatedButton(
+                "Queue",
+                on_click=lambda _: page.open(bs),
+                icon=ft.Icons.ARROW_UPWARD,
+                style=ft.ButtonStyle(
+                    icon_size=28,
+                    text_style=ft.TextStyle(size=24),
+                    padding=ft.padding.symmetric(horizontal=15),
+                ),
+                height=60,
+            ),
+        ],
+        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+    )
+
     page.views.append(
         ft.View(
             "/",
             [
                 ft.Container(
-                    content=ft.Row(
-                        [
-                            prevtrackcol,
-                            trackinfocol,
-                            nexttrackcol,
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_AROUND,
-                    ),
+                    toprow,
                     alignment=ft.alignment.center,
                     width=800,
                 ),
-                ft.Container(
-                    ft.Row(
-                        [
-                            ft.Container(tvolume),
-                            ft.ElevatedButton(
-                                "Queue",
-                                on_click=lambda _: page.open(bs),
-                                icon=ft.Icons.ARROW_UPWARD,
-                                style=ft.ButtonStyle(
-                                    icon_size=28,
-                                    text_style=ft.TextStyle(size=24),
-                                    padding=ft.padding.symmetric(horizontal=15),
-                                ),
-                                height=60,
-                            ),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
-                ),
+                ft.Container(bottomrow),
             ],
             bgcolor="#000000",
             vertical_alignment=ft.MainAxisAlignment.CENTER,
@@ -507,10 +509,12 @@ def main(page: ft.Page):
         page_transitions=ft.PageTransitionsTheme(windows=ft.PageTransitionTheme.NONE),
         use_material3=True,
     )
-    if pstate.stateisplaying == True:
+    if ss.playerstate.isplaying == True:
         start_refresh()
         remove_long_poll()
+        spc.update_playback()
         make_queue()
+        update_fields()
     else:
         long_running_poll()
         stop_timer()
