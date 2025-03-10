@@ -118,9 +118,11 @@ class SpotifyController:
 
     def toggle_shuffle(self):
         if not ss.playerstate.shuffle:
-            sp.shuffle(False, ss.actualdevice.id)
-        else:
             sp.shuffle(True, ss.actualdevice.id)
+            ss.playerstate.shuffle = True
+        else:
+            sp.shuffle(False, ss.actualdevice.id)
+            ss.playerstate.shuffle = False
 
     def play_pause(self):
         if ss.playerstate.isplaying == True:
@@ -419,6 +421,11 @@ def main(page: ft.Page):
         tvolume.value = e.control.value
         tvolume.update()
 
+    def shuffle_dialog(e):
+        spc.toggle_shuffle()
+        page.open(ft.SnackBar(ft.Text(f"Shuffle {ss.playerstate.shuffle}")))
+        page.update()
+
     tvolume = ft.Slider(
         min=0, max=100, value=ss.actualdevice.volume, on_change_end=update_volume
     )
@@ -467,6 +474,7 @@ def main(page: ft.Page):
                     width=200,
                     height=200,
                     on_click=play_pause,
+                    on_long_press=shuffle_dialog,
                 ),
             ],
             alignment=ft.alignment.center,
