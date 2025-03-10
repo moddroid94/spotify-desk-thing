@@ -1,12 +1,12 @@
-# Spot(ify) controller app
+# Spotify controller app
 
-Made for 4,3' touch lcd from wondershare, ui is built for 800x480 so scaling may be a problem.
+Made for 4,3' touch lcd from wondershare, ui is built for 800x480 and fixed, you will need to change some value to make fit bigger screens, i may fix that in the future.
 
-for now is just the player, controlling a single device, hardcoded, which is the string "SAMWIN", have fun with that leak.
+for now is just the player, controlling a single device, hardcoded, which is the string "SAMWIN" somwhere, i'll add a device selector soon.
 
-it uses pylette to select the colors for the ui bg and iconsbg and the luminance check to change the icons color
+It should be able to run on any os, but i'm not sure about mobile.
 
-updates the ui every 1s, if it's playing , otherwise every 5s, idk the rate limit, wasn't able to find them, so until works it is what it is.
+updates the ui every 1s, if it's playing , when a user performs an action or otherwise every 5s, idk the rate limit, wasn't able to find them, so until works it is what it is.
 
 You'll need to set spotipy variables into a credentials.py file into the src folder of the project.
 
@@ -26,18 +26,19 @@ SPOTIPY_THING = "123123123"
 
 Run the app
 
-### uv
+
 
 Run as a desktop app:
 
 ```
-uv run flet run
+flet run
 ```
 
 Run as a web app:
+it main not work this way, idk
 
 ```
-uv run flet run --web
+flet run --web
 ```
 
 ### Poetry
@@ -55,7 +56,7 @@ poetry run flet run
 ```
 
 Run as a web app:
-
+it main not work this way, idk
 ```
 poetry run flet run --web
 ```
