@@ -1,4 +1,4 @@
-# Spotify controller app
+# Spotify remote controller
 
 Made for 4,3' touch lcd from wondershare, ui is built for 800x480 and fixed, you will need to change some value to make fit bigger screens, i may fix that in the future.
 
