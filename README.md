@@ -1,26 +1,41 @@
-# Spotify remote controller
+# A Desk Thing - Spotify remote controller
 
-Made for 4,3' touch lcd from wondershare, ui is built for 800x480 and fixed, you will need to change some value to make fit bigger screens, i may fix that in the future.
+Simple remote controller for spotify devices, allows to control different devices and play from the saved songs/playlists.
 
-for now is just the player, controlling a single device, hardcoded, which is the string "SAMWIN" somwhere, i'll add a device selector soon.
+## Features:
+
+- Saved playlists explorer
+- Liked Songs explorer
+- Device Selector/Switcher
+- Shuffle toggle (repeat toggle soon)
+- Queue list
+- Slider Volume control
+- Play/pause/next/previous controls
+- Slider Seek Track / Progress Visualization
+- Session cache (persistent session storage soon)
+
+it does not implement search nor allows for visualization of info of any kind, it's just to allow control of the music with a simple desktop touchscreen rpi
+
+is made for a 4,3' touch lcd from wondershare, ui is built for 800x480 and most is someway fixed, you will need to change some value to make fit bigger screens, i may fix that in the future (if flet allows to better control of textfields!)
 
 It should be able to run on any os, but i'm not sure about mobile.
 
-updates the ui every 1s, if it's playing , when a user performs an action or otherwise every 5s, idk the rate limit, wasn't able to find them, so until works it is what it is.
+updates the state every 1s if it's playing, every 5s if idle, it should not consume lots of api calls but the rate limit isn't clear, is just based on a 30s rolling window average call/s, which should be ok on this use case.
 
-You'll need to set spotipy variables into a credentials.py file into the src folder of the project.
-
-this is not very secure, you should use env variables.
+during test i peaked at 10k combined calls in 1 day of full dev, and never got rate limited, i imagine if you start opening all the playlists you may get it, idk.ou'll need to set spotipy variables into a credentials.py file into the src folder of the project like this:
 
 ```
 SPOTIPY_THING = "123123123"
+
 ```
+
+this is not very secure, you should use env variables.
 
 ## SCREENSHOT
 
-![1741645799789](image/README/1741645799789.png)
+![1741731306991](image/README/1741731306991.png)
 
-![1741645555876](image/README/1741645555876.png)
+![1741731321276](image/README/1741731321276.png)
 
 ![1741645853040](image/README/1741645853040.png)
 

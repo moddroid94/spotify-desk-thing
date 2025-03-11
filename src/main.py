@@ -83,6 +83,7 @@ class SpotifyController:
             ss.actualtrack = cs.get_current_track(
                 self.playback_state, from_history=True
             )
+            ## AUTOSELECT PREFERRED DEVICE, CHANGE THE STRING TO SELECT THE PREFERRED PLAYER WHEN LAUCHING (IF ACTIVE)
             for deviceid, device in ss.userdevices.items():
                 ss.actualdevice = device if device.name == "SAMWIN" else None
 
@@ -278,32 +279,43 @@ def main(page: ft.Page):
 
     def make_playlists():
         if ss.userplaylists is not None:
+            icon = ft.Icon(ft.Icons.FAVORITE, size=64)
             queuelist = []
             for uri, playlist in ss.userplaylists.items():
-                queuelist.append(
-                    ft.ListTile(
-                        leading=ft.Image(
-                            src=playlist.image,
-                            width=32,
-                            height=32,
-                            fit=ft.ImageFit.CONTAIN,
-                            border_radius=ft.border_radius.all(5),
-                        ),
-                        title=ft.Text(playlist.name),
-                        trailing=ft.IconButton(
-                            ft.Icons.ARROW_CIRCLE_RIGHT,
-                            on_click=explore_playlist,
-                            data=[uri],
-                        ),
-                        on_click=explore_playlist,
-                        data=[uri],
-                    )
+                img = ft.Image(
+                    src=playlist.image,
+                    width=86,
+                    height=86,
+                    fit=ft.ImageFit.FIT_HEIGHT,
+                    border_radius=ft.border_radius.all(5),
                 )
-            bs1.content.content = ft.Container(
-                width=600,
-                content=ft.Column(controls=queuelist, spacing=0, scroll=True),
-                padding=ft.padding.symmetric(vertical=0, horizontal=0),
-                margin=ft.margin.symmetric(horizontal=2, vertical=2),
+                queuelist.append(
+                    ft.Stack(
+                        [
+                            icon if playlist.name == "Liked Songs" else img,
+                            ft.Text(value=playlist.name, bottom=5),
+                            ft.Container(
+                                content=ft.IconButton(
+                                    icon=ft.Icons.PLAY_ARROW,
+                                    opacity=0,
+                                    on_click=explore_playlist,
+                                    data=[uri],
+                                ),
+                                height=90,
+                                width=90,
+                            ),
+                        ],
+                        alignment=ft.alignment.center,
+                    ),
+                )
+            bs1.content.content = ft.GridView(
+                controls=queuelist,
+                expand=1,
+                runs_count=5,
+                max_extent=150,
+                child_aspect_ratio=1.0,
+                spacing=5,
+                run_spacing=15,
             )
 
     def explore_playlist(e):
@@ -327,8 +339,16 @@ def main(page: ft.Page):
                         fit=ft.ImageFit.CONTAIN,
                         border_radius=ft.border_radius.all(5),
                     ),
-                    title=ft.Text(track.name),
-                    subtitle=ft.Text(track.artists),
+                    title=ft.Text(
+                        track.name,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                        max_lines=1,
+                    ),
+                    subtitle=ft.Text(
+                        track.artists,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                        max_lines=1,
+                    ),
                     trailing=ft.Text(
                         time.strftime("%M:%S", time.gmtime(track.duration))
                     ),
@@ -400,8 +420,16 @@ def main(page: ft.Page):
             tticonbtn.icon = ft.Icons.PLAY_ARROW
             tticonbtn.opacity = 0.8
         ttimg.src = ss.actualtrack.image
-        tname.value = ss.actualtrack.name
-        tartist.value = ss.actualtrack.artists
+        tname.value = (
+            ss.actualtrack.name[:22] + "..."
+            if len(ss.actualtrack.name) > 22
+            else ss.actualtrack.name
+        )
+        tartist.value = (
+            ss.actualtrack.artists[:35] + "..."
+            if len(ss.actualtrack.artists) > 35
+            else ss.actualtrack.artists
+        )
         talbum.value = ss.actualtrack.album
 
         ttime.content.max = ss.actualtrack.duration
@@ -423,6 +451,12 @@ def main(page: ft.Page):
 
     def shuffle_dialog(e):
         spc.toggle_shuffle()
+        if ss.playerstate.shuffle:
+            pshuffle.name = ft.Icons.SHUFFLE_OUTLINED
+            pshuffle.color = ft.Colors.BLUE_ACCENT
+        else:
+            pshuffle.name = ft.Icons.SHUFFLE_OUTLINED
+            pshuffle.color = ft.Colors.GREY_600
         page.open(ft.SnackBar(ft.Text(f"Shuffle {ss.playerstate.shuffle}")))
         page.update()
 
@@ -499,33 +533,35 @@ def main(page: ft.Page):
         ),
     )
     tname = ft.Text(
-        ss.actualtrack.name,
+        ss.actualtrack.name[:22],
         size=24,
         weight=ft.FontWeight.BOLD,
-        # overflow=ft.TextOverflow.ELLIPSIS,
+        overflow=ft.TextOverflow.ELLIPSIS,
         text_align=ft.TextAlign.CENTER,
-        max_lines=2,
+        max_lines=1,
     )
     tartist = ft.Text(
-        ss.actualtrack.artists,
-        size=20,
-        weight=ft.FontWeight.BOLD,
-        # overflow=ft.TextOverflow.ELLIPSIS,
+        ss.actualtrack.artists[:35],
+        size=16,
+        weight=ft.FontWeight.W_600,
+        overflow=ft.TextOverflow.ELLIPSIS,
         text_align=ft.TextAlign.CENTER,
         max_lines=1,
     )
     talbum = ft.Text(ss.actualtrack.album)
 
+    pshuffle = ft.Icon(ft.Icons.SHUFFLE, color=ft.Colors.GREY_600)
+
     prevtrack = ft.IconButton(
         icon=ft.Icons.SKIP_PREVIOUS_ROUNDED,
-        icon_size=64,
+        icon_size=84,
         icon_color=ft.Colors.WHITE,
         style=ft.ButtonStyle(bgcolor=ft.Colors.BLACK),
         on_click=previous_track,
     )
     nexttrack = ft.IconButton(
         icon=ft.Icons.SKIP_NEXT_ROUNDED,
-        icon_size=64,
+        icon_size=84,
         icon_color=ft.Colors.WHITE,
         style=ft.ButtonStyle(bgcolor=ft.Colors.BLACK),
         on_click=next_track,
@@ -546,9 +582,20 @@ def main(page: ft.Page):
                     ),
                     alignment=ft.alignment.center,
                 ),
-                ft.Container(tname),
-                ft.Container(tartist),
-                ft.Container(talbum),
+                ft.Container(
+                    ft.Row(
+                        [tname, ft.Text(" · "), pshuffle],
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                    ),
+                ),
+                ft.Container(
+                    ft.Row(
+                        [tartist, ft.Text(" - "), talbum],
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                    )
+                ),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -592,6 +639,7 @@ def main(page: ft.Page):
     )
 
     dd = ft.Dropdown(
+        value=ss.actualdevice.name,
         border=ft.InputBorder.UNDERLINE,
         editable=True,
         label="Devices",
@@ -662,10 +710,14 @@ def main(page: ft.Page):
                     alignment=ft.alignment.center,
                     width=800,
                 ),
-                ft.Container(bottomrow),
+                ft.Container(
+                    bottomrow,
+                    shadow=ft.BoxShadow(spread_radius=5.0, color="#000000"),
+                    border_radius=6,
+                ),
             ],
             bgcolor="#000000",
-            vertical_alignment=ft.MainAxisAlignment.CENTER,
+            vertical_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=2,
         )
