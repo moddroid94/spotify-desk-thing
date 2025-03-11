@@ -426,6 +426,24 @@ def main(page: ft.Page):
         page.open(ft.SnackBar(ft.Text(f"Shuffle {ss.playerstate.shuffle}")))
         page.update()
 
+    def populate_devices():
+        options = []
+        for id, device in ss.userdevices.items():
+            options.append(
+                ft.DropdownOption(
+                    key=device.name,
+                    content=ft.Text(value=device.name),
+                )
+            )
+        return options
+
+    def device_changed(e):
+        for id, device in ss.userdevices.items():
+            if e.control.value == device.name:
+                ss.actualdevice = device
+                sp.transfer_playback(id, ss.playerstate.isplaying)
+        dd.update()
+
     tvolume = ft.Slider(
         min=0, max=100, value=ss.actualdevice.volume, on_change_end=update_volume
     )
@@ -573,6 +591,16 @@ def main(page: ft.Page):
         content=ft.Container(padding=20, width=780, content=None),
     )
 
+    dd = ft.Dropdown(
+        border=ft.InputBorder.UNDERLINE,
+        editable=True,
+        label="Devices",
+        options=populate_devices(),
+        on_change=device_changed,
+        dense=True,
+        leading_icon=ft.Icons.DEVICES,
+    )
+
     toprow = ft.Row(
         [
             prevtrackcol,
@@ -584,7 +612,13 @@ def main(page: ft.Page):
 
     bottomrow = ft.Row(
         [
-            ft.Container(tvolume),
+            ft.Container(
+                ft.Row(
+                    [tvolume, dd],
+                    alignment=ft.MainAxisAlignment.END,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                )
+            ),
             ft.Container(
                 ft.Row(
                     [
