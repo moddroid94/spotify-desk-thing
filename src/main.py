@@ -208,6 +208,9 @@ def main(page: ft.Page):
         palette = extract_colors(
             image=image, palette_size=5, sort_mode="frequency", mode="KM"
         )
+        altpalette = extract_colors(
+            image=image, palette_size=5, sort_mode="luminance", mode="KM"
+        )
         most_common_color = palette[0].rgb
         rgbval = (
             most_common_color[0],
@@ -221,9 +224,19 @@ def main(page: ft.Page):
             least_common_color[1],
             least_common_color[2],
         )
+        third_common_color = altpalette[4].rgb
+        rgbval3 = (
+            third_common_color[0],
+            third_common_color[1],
+            third_common_color[2],
+        )
         rgbcol = "#60%02x%02x%02x" % (rgbval)
         rgbcol2 = "#%02x%02x%02x" % (rgbval2)
+        rgbcol3 = "#60%02x%02x%02x" % (rgbval3)
         page.views[-1].bgcolor = rgbcol
+        lowercont.bgcolor = rgbcol3
+        playlistbtn.bgcolor = rgbcol
+        queuebtn.bgcolor = rgbcol
         if collum > 100:
             nexttrack.icon_color = "#000000"
             prevtrack.icon_color = "#000000"
@@ -640,13 +653,11 @@ def main(page: ft.Page):
     )
 
     dd = ft.Dropdown(
+        width=200,
         value=ss.actualdevice.name,
-        border=ft.InputBorder.UNDERLINE,
-        editable=True,
         label="Devices",
         options=populate_devices(),
         on_change=device_changed,
-        dense=True,
         leading_icon=ft.Icons.DEVICES,
     )
 
@@ -659,6 +670,30 @@ def main(page: ft.Page):
         alignment=ft.MainAxisAlignment.SPACE_AROUND,
     )
 
+    queuebtn = ft.ElevatedButton(
+                            "Queue",
+                            on_click=lambda _: page.open(bs),
+                            icon=ft.Icons.ARROW_UPWARD,
+                            style=ft.ButtonStyle(
+                                icon_size=28,
+                                text_style=ft.TextStyle(size=24),
+                                padding=ft.padding.symmetric(horizontal=15),
+                            ),
+                            height=60,
+                        )
+
+    playlistbtn = ft.ElevatedButton(
+                            "Playlists",
+                            on_click=lambda _: page.open(bs1),
+                            icon=ft.Icons.LIST,
+                            style=ft.ButtonStyle(
+                                icon_size=28,
+                                text_style=ft.TextStyle(size=22),
+                                padding=ft.padding.symmetric(horizontal=15),
+                            ),
+                            height=60,
+                        )
+    
     bottomrow = ft.Row(
         [
             ft.Container(
@@ -671,28 +706,8 @@ def main(page: ft.Page):
             ft.Container(
                 ft.Row(
                     [
-                        ft.ElevatedButton(
-                            "Playlists",
-                            on_click=lambda _: page.open(bs1),
-                            icon=ft.Icons.LIST,
-                            style=ft.ButtonStyle(
-                                icon_size=28,
-                                text_style=ft.TextStyle(size=22),
-                                padding=ft.padding.symmetric(horizontal=15),
-                            ),
-                            height=60,
-                        ),
-                        ft.ElevatedButton(
-                            "Queue",
-                            on_click=lambda _: page.open(bs),
-                            icon=ft.Icons.ARROW_UPWARD,
-                            style=ft.ButtonStyle(
-                                icon_size=28,
-                                text_style=ft.TextStyle(size=24),
-                                padding=ft.padding.symmetric(horizontal=15),
-                            ),
-                            height=60,
-                        ),
+                        playlistbtn,
+                        queuebtn,
                     ],
                     alignment=ft.MainAxisAlignment.END,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -701,6 +716,14 @@ def main(page: ft.Page):
         ],
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
     )
+
+    lowercont = ft.Container(
+                    bottomrow,
+                    border_radius=6,
+                    bgcolor="#ffffff",
+                    padding=7,
+                    margin=-5,
+                )
 
     page.views.append(
         ft.View(
@@ -711,13 +734,9 @@ def main(page: ft.Page):
                     alignment=ft.alignment.center,
                     width=800,
                 ),
-                ft.Container(
-                    bottomrow,
-                    shadow=ft.BoxShadow(spread_radius=5.0, color="#000000"),
-                    border_radius=6,
-                ),
+                lowercont
             ],
-            bgcolor="#000000",
+            bgcolor="#ffffff",
             vertical_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=2,
@@ -734,6 +753,7 @@ def main(page: ft.Page):
         page_transitions=ft.PageTransitionsTheme(windows=ft.PageTransitionTheme.NONE),
         use_material3=True,
     )
+    page.theme_mode=ft.ThemeMode.DARK
     make_playlists()
     if ss.playerstate.isplaying == True:
         start_refresh()
