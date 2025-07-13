@@ -19,6 +19,7 @@ sp = spotipy.Spotify(
         client_secret=credentials.SPOTIPY_CLIENT_SECRET,
         redirect_uri=credentials.SPOTIPY_REDIRECT_URI,
         scope=scope,
+	    open_browser=False
     )
 )
 
@@ -723,9 +724,9 @@ def main(page: ft.Page):
         )
     )
 
-    page.window.max_height = 480
-    page.window.max_width = 800
-    page.window.resizable = False
+    page.window.height = 480
+    page.window.width = 800
+    page.window.resizable = True
     page.window.maximized = True
     page.window.full_screen = True
     page.window.title_bar_hidden = True

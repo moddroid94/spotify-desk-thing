@@ -2,6 +2,16 @@
 
 Simple remote controller for spotify devices, allows to control different devices and play from the saved songs/playlists.
 
+
+## Update 13/7/2025:
+The new Flet 2.0.0 ships with a video component which needs libmpv.so.1 installed, which isn't bt default on raspian, nor is the binary available as of now.
+
+so u'll need to install libmpv-dev and mpv, then simlink libmpv.so from usr/lib/aarch64-linux-gnu.
+
+```
+sudo apt install libmpv-dev mpv
+sudo ln -d /usr/lib/aarch64-linux-gnu/libmpv.so /usr/lib/libmpv.so.1
+```
 ## Features:
 
 - Saved playlists explorer
@@ -25,7 +35,9 @@ updates the state every 1s if it's playing, every 5s if idle, it should not cons
 during test i peaked at 10k combined calls in 1 day of full dev, and never got rate limited, i imagine if you start opening all the playlists you may get it, idk.ou'll need to set spotipy variables into a credentials.py file into the src folder of the project like this:
 
 ```
-SPOTIPY_THING = "123123123"
+SPOTIPY_CLIENT_ID = "123123123"
+SPOTIPY_SECRET = "123123123"
+SPOTIPY_REDIRECT_URI = "123123123"
 
 ```
 
@@ -39,40 +51,26 @@ this is not very secure, you should use env variables.
 
 ![1741645853040](image/README/1741645853040.png)
 
-Run the app
 
-Run as a desktop app:
-
-```
-flet run
-```
-
-Run as a web app:
-it main not work this way, idk
-
-```
-flet run --web
-```
-
-### Poetry
+### uv
 
 Install dependencies from `pyproject.toml`:
 
 ```
-poetry install
+uv sync
 ```
 
 Run as a desktop app:
 
 ```
-poetry run flet run
+uv run flet run
 ```
 
 Run as a web app:
 it main not work this way, idk
 
 ```
-poetry run flet run --web
+uv run flet run --web
 ```
 
 For more details on running the app, refer to the [Getting Started Guide](https://flet.dev/docs/getting-started/).
