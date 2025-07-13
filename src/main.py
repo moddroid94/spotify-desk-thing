@@ -724,8 +724,8 @@ def main(page: ft.Page):
         )
     )
 
-    page.window.height = 480
-    page.window.width = 800
+    page.window.max_height = 480
+    page.window.max_width = 800
     page.window.resizable = True
     page.window.maximized = True
     page.window.full_screen = True
